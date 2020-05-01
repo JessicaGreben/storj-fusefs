@@ -85,6 +85,7 @@ func NewDir(project *uplink.Project, bucketname string) *Dir {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	log.Println("dir Attr")
 	a.Mode = os.ModeDir | 0o555
 	a.Valid = 5 * time.Minute
 	a.Uid = getUserID()
@@ -94,6 +95,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 
 // A LookupRequest asks to look up the given name in the directory named by r.Node.
 func (d *Dir) Lookup(ctx context.Context, objName string) (fs.Node, error) {
+	log.Println("dir lookup for object", objName)
 	if f, ok := d.containsObject(ctx, objName); ok {
 		return f, nil
 	}
@@ -116,6 +118,7 @@ func (d *Dir) containsObject(ctx context.Context, objName string) (*File, bool) 
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	log.Println("dir ReadDirAll")
 	// A Dirent represents a single directory entry.
 	var dirDirs = []fuse.Dirent{}
 
@@ -155,6 +158,7 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *Fi
 }
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	log.Println("file Attr for", f.obj.Key)
 	a.Valid = 5 * time.Minute
 	a.Mode = 0o444 // read only
 	a.Uid = getUserID()
@@ -169,6 +173,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
+	log.Println("file ReadAll for", f.obj.Key)
 	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
 	if err != nil {
 		log.Fatal("download: ", err)

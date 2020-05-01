@@ -162,8 +162,20 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	// todo: set valid to how long attr can be cached
 	// a.Valid = time.Minute
 	a.Mode = 0o444 // read only
-	a.Size = uint64(100)
-	// a.Size = uint64(f.obj.System.ContentLength)
+
+	s, err := f.project.StatObject(ctx, f.bucketname, f.obj.Key)
+	if err != nil {
+		log.Fatal("object stat: ", err)
+	}
+	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
+	if err != nil {
+		log.Fatal("download: ", err)
+	}
+	defer object.Close()
+	log.Print("s size:", s.System.ContentLength)
+	log.Print("attr size:", object.Info().System.ContentLength)
+
+	a.Size = uint64(s.System.ContentLength)
 	return nil
 }
 

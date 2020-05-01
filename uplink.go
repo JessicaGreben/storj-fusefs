@@ -10,6 +10,27 @@ import (
 	"storj.io/uplink"
 )
 
+func setupUplink(ctx context.Context, access, bucketname string) *uplink.Project {
+	a, err := uplink.ParseAccess(access)
+	if err != nil {
+		log.Fatal("parseAccess ", err)
+		return nil
+	}
+	project, err := uplink.OpenProject(ctx, a)
+	if err != nil {
+		log.Fatal("OpenProject ", err)
+		return nil
+	}
+
+	// check that the bucket exists
+	_, err = project.StatBucket(ctx, bucketname)
+	if err != nil {
+		log.Fatal("StatBucket ", err)
+		return nil
+	}
+	return project
+}
+
 func read(ctx context.Context, p *uplink.Project, bucketname string) {
 	object, err := p.DownloadObject(ctx, bucketname, "go.mod", nil)
 	if err != nil {

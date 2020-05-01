@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
+	"path/filepath"
+	"strconv"
 	"syscall"
 
 	"bazil.org/fuse"
@@ -33,31 +37,16 @@ func main() {
 	project := setupUplink(ctx, *access, *bucketname)
 	defer project.Close()
 
+	pwd, err := os.Getwd()
+	if err != nil {
+		log.Println("getwd err:", err)
+	}
+	path := filepath.Join(pwd, *mountpoint)
+	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname, path))
 	err = fs.Serve(c, NewFS(project, *bucketname))
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func setupUplink(ctx context.Context, access, bucketname string) *uplink.Project {
-	a, err := uplink.ParseAccess(access)
-	if err != nil {
-		log.Fatal("parseAccess ", err)
-		return nil
-	}
-	project, err := uplink.OpenProject(ctx, a)
-	if err != nil {
-		log.Fatal("OpenProject ", err)
-		return nil
-	}
-
-	// check that the bucket exists
-	_, err = project.StatBucket(ctx, bucketname)
-	if err != nil {
-		log.Fatal("StatBucket ", err)
-		return nil
-	}
-	return project
 }
 
 type FS struct {
@@ -83,6 +72,7 @@ type Dir struct {
 
 // fs.Node is the interface required of a file or directory.
 var _ fs.Node = (*Dir)(nil)
+
 var _ fs.HandleReadDirAller = (*Dir)(nil)
 
 func NewDir(project *uplink.Project, bucketname string) *Dir {
@@ -148,6 +138,7 @@ type File struct {
 
 // fs.Node is the interface required of a file or directory.
 var _ fs.Node = (*File)(nil)
+
 var _ fs.HandleReadAller = (*File)(nil)
 
 func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *File {
@@ -161,20 +152,24 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *Fi
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	// todo: set valid to how long attr can be cached
 	// a.Valid = time.Minute
+	user, err := user.Current()
+	if err != nil {
+		log.Fatal("current user: ", err)
+	}
+	uid, err := strconv.Atoi(user.Uid)
+	if err != nil {
+		log.Fatal("atoi uid: ", err)
+	}
+	a.Uid = uint32(uid)
+	// todo: dont hardcore
+	a.Gid = uint32(1001)
+
 	a.Mode = 0o444 // read only
 
 	s, err := f.project.StatObject(ctx, f.bucketname, f.obj.Key)
 	if err != nil {
 		log.Fatal("object stat: ", err)
 	}
-	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
-	if err != nil {
-		log.Fatal("download: ", err)
-	}
-	defer object.Close()
-	log.Print("s size:", s.System.ContentLength)
-	log.Print("attr size:", object.Info().System.ContentLength)
-
 	a.Size = uint64(s.System.ContentLength)
 	return nil
 }
@@ -185,7 +180,6 @@ func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
 		log.Fatal("download: ", err)
 	}
 	defer object.Close()
-	log.Print("size:", object.Info().System.ContentLength)
 
 	b, err := ioutil.ReadAll(object)
 	if err != nil {

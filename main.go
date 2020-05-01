@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -18,8 +16,8 @@ import (
 
 func main() {
 	access := flag.String("access", "", "access grant to a Storj project")
-	bucketname := flag.String("bucket", "", "name of the Stroj bucket to be mounted")
-	mountpoint := flag.String("mountpoint", "", "path to mount Storj bucket")
+	bucketname := flag.String("bucket", "", "name of the Storj bucket to be mounted")
+	mountpoint := flag.String("mountpoint", "", "location to mount the Storj bucket")
 	flag.Parse()
 
 	c, err := fuse.Mount(
@@ -62,19 +60,11 @@ func setupUplink(ctx context.Context, access, bucketname string) *uplink.Project
 	return project
 }
 
-func ls(ctx context.Context, p *uplink.Project, bucketname string) {
-	iter := p.ListObjects(ctx, bucketname, nil)
-	for iter.Next() {
-		fmt.Println(iter.Item())
-	}
-	if err := iter.Err(); err != nil {
-		log.Fatal("listObj ", err)
-	}
-}
-
 type FS struct {
 	root fs.Node
 }
+
+var _ fs.FS = (*FS)(nil)
 
 func NewFS(project *uplink.Project, bucketname string) *FS {
 	return &FS{
@@ -91,6 +81,10 @@ type Dir struct {
 	project    *uplink.Project
 }
 
+// fs.Node is the interface required of a file or directory.
+var _ fs.Node = (*Dir)(nil)
+var _ fs.HandleReadDirAller = (*Dir)(nil)
+
 func NewDir(project *uplink.Project, bucketname string) *Dir {
 	return &Dir{
 		bucketname: bucketname,
@@ -98,25 +92,25 @@ func NewDir(project *uplink.Project, bucketname string) *Dir {
 	}
 }
 
-func (Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = 1
+func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
 
 // A LookupRequest asks to look up the given name in the directory named by r.Node.
 func (d *Dir) Lookup(ctx context.Context, objName string) (fs.Node, error) {
-	if f, ok := d.containsObj(ctx, objName); ok {
+	if f, ok := d.containsObject(ctx, objName); ok {
 		return f, nil
 	}
 	return nil, syscall.ENOENT
 }
 
-func (d *Dir) containsObj(ctx context.Context, objName string) (*File, bool) {
+func (d *Dir) containsObject(ctx context.Context, objName string) (*File, bool) {
 	iter := d.project.ListObjects(ctx, d.bucketname, nil)
 	for iter.Next() {
 		if iter.Item().Key == objName {
-			return newFile(iter.Item(), d.project, d.bucketname), true
+			f := newFile(iter.Item(), d.project, d.bucketname)
+			return f, true
 		}
 	}
 	if err := iter.Err(); err != nil {
@@ -126,22 +120,20 @@ func (d *Dir) containsObj(ctx context.Context, objName string) (*File, bool) {
 	return nil, false
 }
 
-func (d Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	var inodeInts uint64 = 2
+func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	// A Dirent represents a single directory entry.
 	var dirDirs = []fuse.Dirent{}
 
 	iter := d.project.ListObjects(ctx, d.bucketname, nil)
 	for iter.Next() {
 		entry := fuse.Dirent{
-			Inode: inodeInts,
-			Name:  iter.Item().Key,
-			Type:  fuse.DT_File,
+			Name: iter.Item().Key,
+			Type: fuse.DT_File,
 		}
 		dirDirs = append(dirDirs, entry)
-		inodeInts++
 	}
 	if err := iter.Err(); err != nil {
-		log.Fatal("listObj ", err)
+		log.Fatal("listObj: ", err)
 		return dirDirs, err
 	}
 
@@ -154,6 +146,10 @@ type File struct {
 	bucketname string
 }
 
+// fs.Node is the interface required of a file or directory.
+var _ fs.Node = (*File)(nil)
+var _ fs.HandleReadAller = (*File)(nil)
+
 func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *File {
 	return &File{
 		obj:        obj,
@@ -162,41 +158,26 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *Fi
 	}
 }
 
-func (f File) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = 2
-	a.Mode = 0o444
-	a.Size = uint64(f.obj.System.ContentLength)
+func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	// todo: set valid to how long attr can be cached
+	// a.Valid = time.Minute
+	a.Mode = 0o444 // read only
+	a.Size = uint64(100)
+	// a.Size = uint64(f.obj.System.ContentLength)
 	return nil
 }
 
-func (f File) ReadAll(ctx context.Context) ([]byte, error) {
+func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
 	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
 	if err != nil {
 		log.Fatal("download: ", err)
 	}
 	defer object.Close()
+	log.Print("size:", object.Info().System.ContentLength)
 
 	b, err := ioutil.ReadAll(object)
 	if err != nil {
-		log.Fatal("3: ", err)
+		log.Fatal("readAll: ", err)
 	}
 	return b, nil
-}
-
-func read(ctx context.Context, p *uplink.Project, bucketname string) {
-	object, err := p.DownloadObject(ctx, bucketname, "go.mod", nil)
-	if err != nil {
-		log.Fatal("download: ", err)
-	}
-	defer object.Close()
-
-	w, err := os.Create("here.sum")
-	if err != nil {
-		log.Fatal("2: ", err)
-	}
-	defer w.Close()
-	_, err = io.Copy(w, object)
-	if err != nil {
-		log.Fatal("3: ", err)
-	}
 }

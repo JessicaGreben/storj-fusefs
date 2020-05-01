@@ -85,20 +85,22 @@ func NewDir(project *uplink.Project, bucketname string) *Dir {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	log.Println("dir Attr")
+	start := time.Now()
 	a.Mode = os.ModeDir | 0o555
 	a.Valid = 5 * time.Minute
 	a.Uid = getUserID()
 	a.Gid = getGroupID()
+	log.Println(time.Since(start).Milliseconds(), " (ms), dir Attr")
 	return nil
 }
 
 // A LookupRequest asks to look up the given name in the directory named by r.Node.
 func (d *Dir) Lookup(ctx context.Context, objName string) (fs.Node, error) {
-	log.Println("dir lookup for object", objName)
+	start := time.Now()
 	if f, ok := d.containsObject(ctx, objName); ok {
 		return f, nil
 	}
+	log.Println(time.Since(start).Milliseconds(), " (ms), dir lookup for object", objName)
 	return nil, syscall.ENOENT
 }
 
@@ -118,7 +120,7 @@ func (d *Dir) containsObject(ctx context.Context, objName string) (*File, bool) 
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	log.Println("dir ReadDirAll")
+	start := time.Now()
 	// A Dirent represents a single directory entry.
 	var dirDirs = []fuse.Dirent{}
 
@@ -135,6 +137,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		return dirDirs, err
 	}
 
+	log.Println(time.Since(start).Milliseconds(), "(ms), dir ReadDirAll")
 	return dirDirs, nil
 }
 
@@ -158,7 +161,7 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *Fi
 }
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
-	log.Println("file Attr for", f.obj.Key)
+	start := time.Now()
 	a.Valid = 5 * time.Minute
 	a.Mode = 0o444 // read only
 	a.Uid = getUserID()
@@ -169,11 +172,12 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		log.Fatal("object stat: ", err)
 	}
 	a.Size = uint64(s.System.ContentLength)
+	log.Println(time.Since(start).Milliseconds(), "(ms), file Attr for", f.obj.Key)
 	return nil
 }
 
 func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
-	log.Println("file ReadAll for", f.obj.Key)
+	start := time.Now()
 	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
 	if err != nil {
 		log.Fatal("download: ", err)
@@ -184,6 +188,7 @@ func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		log.Fatal("readAll: ", err)
 	}
+	log.Println(time.Since(start).Milliseconds(), "(ms), file ReadAll for", f.obj.Key)
 	return b, nil
 }
 

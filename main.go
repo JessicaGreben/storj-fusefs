@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -43,6 +44,7 @@ func main() {
 	}
 	path := filepath.Join(pwd, *mountpoint)
 	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname, path))
+
 	err = fs.Serve(c, NewFS(project, *bucketname))
 	if err != nil {
 		log.Fatal(err)
@@ -84,6 +86,9 @@ func NewDir(project *uplink.Project, bucketname string) *Dir {
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = os.ModeDir | 0o555
+	a.Valid = 5 * time.Minute
+	a.Uid = getUserID()
+	a.Gid = getGroupID()
 	return nil
 }
 
@@ -150,21 +155,10 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *Fi
 }
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
-	// todo: set valid to how long attr can be cached
-	// a.Valid = time.Minute
-	user, err := user.Current()
-	if err != nil {
-		log.Fatal("current user: ", err)
-	}
-	uid, err := strconv.Atoi(user.Uid)
-	if err != nil {
-		log.Fatal("atoi uid: ", err)
-	}
-	a.Uid = uint32(uid)
-	// todo: dont hardcore
-	a.Gid = uint32(1001)
-
+	a.Valid = 5 * time.Minute
 	a.Mode = 0o444 // read only
+	a.Uid = getUserID()
+	a.Gid = getGroupID()
 
 	s, err := f.project.StatObject(ctx, f.bucketname, f.obj.Key)
 	if err != nil {
@@ -186,4 +180,22 @@ func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
 		log.Fatal("readAll: ", err)
 	}
 	return b, nil
+}
+
+func getUserID() uint32 {
+	// set user and group to the current user/group
+	// otherwise defaults to root
+	user, err := user.Current()
+	if err != nil {
+		log.Fatal("current user: ", err)
+	}
+	uid, err := strconv.Atoi(user.Uid)
+	if err != nil {
+		log.Fatal("atoi uid: ", err)
+	}
+	return uint32(uid)
+}
+func getGroupID() uint32 {
+	// todo: dont hardcore
+	return uint32(1001)
 }

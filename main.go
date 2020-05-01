@@ -116,7 +116,7 @@ func (d *Dir) containsObj(ctx context.Context, objName string) (*File, bool) {
 	iter := d.project.ListObjects(ctx, d.bucketname, nil)
 	for iter.Next() {
 		if iter.Item().Key == objName {
-			return newFile(iter.Item()), true
+			return newFile(iter.Item(), d.project, d.bucketname), true
 		}
 	}
 	if err := iter.Err(); err != nil {

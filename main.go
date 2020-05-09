@@ -129,6 +129,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	// A Dirent represents a single directory entry.
 	var dirDirs = []fuse.Dirent{}
 
+	fmt.Println("ListObjects:", d.bucketname)
 	iter := d.project.ListObjects(ctx, d.bucketname, nil)
 	for iter.Next() {
 		fmt.Println("list:", iter.Item().Key)

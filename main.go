@@ -112,14 +112,14 @@ func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 	if object.IsPrefix {
 		d := NewDir(d.project, d.bucketname, object.Key)
 		log.Println(time.Since(start).Milliseconds(),
-			" ms, dir lookup for object", objKey,
+			" ms, prefix dir lookup for object:", object.Key,
 		)
 		return d, nil
 	}
 
 	f := newFile(object, d.project, d.bucketname)
 	log.Println(time.Since(start).Milliseconds(),
-		" ms, dir lookup for object", objKey,
+		" ms, file dir lookup for object", object,
 	)
 	return f, nil
 }
@@ -131,6 +131,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 	iter := d.project.ListObjects(ctx, d.bucketname, nil)
 	for iter.Next() {
+		fmt.Println("list:", iter.Item().Key)
 		entry := fuse.Dirent{
 			Name: iter.Item().Key,
 			Type: fuse.DT_File,

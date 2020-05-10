@@ -94,6 +94,11 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = os.ModeDir | 0o555
 	a.Uid = uid
 	a.Gid = gid
+	s, err := d.project.StatObject(ctx, d.bucketname, d.prefix)
+	if err != nil {
+		log.Fatal("dir stat: ", err)
+	}
+	a.Size = uint64(s.System.ContentLength)
 	return nil
 }
 
@@ -138,6 +143,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 			Type: fuse.DT_File,
 		}
 		if iter.Item().IsPrefix {
+			fmt.Println("is prfix")
 			entry.Type = fuse.DT_Dir
 		}
 		dirDirs = append(dirDirs, entry)
@@ -148,6 +154,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	}
 
 	log.Println(time.Since(start).Milliseconds(), "ms, dir ReadDirAll")
+	fmt.Println(dirDirs)
 	return dirDirs, nil
 }
 

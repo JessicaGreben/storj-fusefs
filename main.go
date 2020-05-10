@@ -96,7 +96,11 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Gid = gid
 	s, err := d.project.StatObject(ctx, d.bucketname, d.prefix)
 	if err != nil {
-		log.Fatal("dir stat: ", err)
+		fmt.Printf("dir stat: %#v\n", err)
+		fmt.Printf("dir stat obj: %#v\n", s)
+	}
+	if s.IsPrefix {
+		fmt.Printf("is prefix stat: %#v\n", err)
 	}
 	a.Size = uint64(s.System.ContentLength)
 	return nil

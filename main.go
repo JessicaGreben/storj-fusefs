@@ -94,6 +94,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = os.ModeDir | 0o555
 	a.Uid = uid
 	a.Gid = gid
+	fmt.Printf("dir attr: %#v\n", d.prefix)
 	if d.prefix != "" {
 		s, err := d.project.StatObject(ctx, d.bucketname, d.prefix)
 		if err != nil {
@@ -112,6 +113,7 @@ func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 	start := time.Now()
 
 	if objKey == "" {
+		fmt.Printf("dir lookup: %#v\n", d.prefix)
 		return d, nil
 	}
 	object, err := d.project.StatObject(ctx, d.bucketname, objKey)

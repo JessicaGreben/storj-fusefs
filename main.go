@@ -94,21 +94,26 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = os.ModeDir | 0o555
 	a.Uid = uid
 	a.Gid = gid
-	s, err := d.project.StatObject(ctx, d.bucketname, d.prefix)
-	if err != nil {
-		fmt.Printf("dir stat: %#v\n", err)
-		fmt.Printf("dir stat obj: %#v\n", s)
+	if d.prefix != "" {
+		s, err := d.project.StatObject(ctx, d.bucketname, d.prefix)
+		if err != nil {
+			fmt.Printf("dir stat: %#v\n", err)
+			fmt.Printf("dir stat obj: %#v\n", s)
+		}
+		if s.IsPrefix {
+			fmt.Printf("is prefix stat: %#v\n", err)
+		}
+		a.Size = uint64(s.System.ContentLength)
 	}
-	if s.IsPrefix {
-		fmt.Printf("is prefix stat: %#v\n", err)
-	}
-	a.Size = uint64(s.System.ContentLength)
 	return nil
 }
 
 func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 	start := time.Now()
 
+	if objKey == "" {
+		return d, nil
+	}
 	object, err := d.project.StatObject(ctx, d.bucketname, objKey)
 	if err != nil {
 		if strings.Contains(err.Error(), "object not found") {

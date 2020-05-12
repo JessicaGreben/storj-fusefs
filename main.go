@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
-	"syscall"
 	"time"
 
 	"bazil.org/fuse"
@@ -77,9 +76,7 @@ type Dir struct {
 	prefix     string
 }
 
-// fs.Node is the interface required of a file or directory.
 var _ fs.Node = (*Dir)(nil)
-
 var _ fs.HandleReadDirAller = (*Dir)(nil)
 
 func NewDir(project *uplink.Project, bucketname, prefix string) *Dir {
@@ -91,46 +88,29 @@ func NewDir(project *uplink.Project, bucketname, prefix string) *Dir {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Mode = os.ModeDir | 0o555
+	a.Mode = os.ModeDir | 0o666
 	a.Uid = uid
 	a.Gid = gid
-	fmt.Printf("dir attr: %#v\n", d.prefix)
-	if d.prefix != "" {
-		s, err := d.project.StatObject(ctx, d.bucketname, d.prefix)
-		if err != nil {
-			fmt.Printf("dir stat: %#v\n", err)
-			fmt.Printf("dir stat obj: %#v\n", s)
-		}
-		if s.IsPrefix {
-			fmt.Printf("is prefix stat: %#v\n", err)
-		}
-		a.Size = uint64(s.System.ContentLength)
-	}
 	return nil
 }
 
 func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 	start := time.Now()
 
-	if objKey == "" {
-		fmt.Printf("dir lookup: %#v\n", d.prefix)
-		return d, nil
-	}
+	objKey = d.prefix + objKey
 	object, err := d.project.StatObject(ctx, d.bucketname, objKey)
 	if err != nil {
-		if strings.Contains(err.Error(), "object not found") {
-			fmt.Printf("err: %#v\n", err)
-			return nil, syscall.ENOENT
+		if errors.Is(err, uplink.ErrObjectNotFound) {
+			// todo: listObjects to see if its a dir here
+			// return nil, syscall.ENOENT
+			d := NewDir(d.project, d.bucketname, objKey+"/")
+			log.Println(time.Since(start).Milliseconds(),
+				" ms, prefix dir lookup for object:", object.Key,
+			)
+			return d, nil
+
 		}
 		return nil, err
-	}
-
-	if object.IsPrefix {
-		d := NewDir(d.project, d.bucketname, object.Key)
-		log.Println(time.Since(start).Milliseconds(),
-			" ms, prefix dir lookup for object:", object.Key,
-		)
-		return d, nil
 	}
 
 	f := newFile(object, d.project, d.bucketname)
@@ -146,7 +126,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	var dirDirs = []fuse.Dirent{}
 
 	fmt.Println("ListObjects:", d.bucketname)
-	iter := d.project.ListObjects(ctx, d.bucketname, nil)
+	iter := d.project.ListObjects(ctx, d.bucketname, &uplink.ListObjectsOptions{Prefix: d.prefix})
 	for iter.Next() {
 		fmt.Println("list:", iter.Item().Key)
 		entry := fuse.Dirent{

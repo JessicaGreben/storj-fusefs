@@ -88,6 +88,7 @@ func NewDir(project *uplink.Project, bucketname, prefix string) *Dir {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	fmt.Println("attr")
 	a.Mode = os.ModeDir | 0o666
 	a.Uid = uid
 	a.Gid = gid
@@ -96,6 +97,7 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 	start := time.Now()
+	fmt.Println("loookup")
 
 	objKey = d.prefix + objKey
 	object, err := d.project.StatObject(ctx, d.bucketname, objKey)
@@ -105,7 +107,7 @@ func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 			// return nil, syscall.ENOENT
 			d := NewDir(d.project, d.bucketname, objKey+"/")
 			log.Println(time.Since(start).Milliseconds(),
-				" ms, prefix dir lookup for object:", object.Key,
+				" ms, prefix dir lookup for object:", objKey,
 			)
 			return d, nil
 

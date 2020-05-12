@@ -110,6 +110,7 @@ func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 			return d, nil
 
 		}
+		fmt.Println("err:", err)
 		return nil, err
 	}
 

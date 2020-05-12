@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"bazil.org/fuse"
@@ -89,7 +90,7 @@ func NewDir(project *uplink.Project, bucketname, prefix string) *Dir {
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	fmt.Println("attr")
-	a.Mode = os.ModeDir | 0o666
+	a.Mode = os.ModeDir | 0o777
 	a.Uid = uid
 	a.Gid = gid
 	return nil
@@ -131,9 +132,11 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	fmt.Println("ListObjects:", d.bucketname)
 	iter := d.project.ListObjects(ctx, d.bucketname, &uplink.ListObjectsOptions{Prefix: d.prefix})
 	for iter.Next() {
-		fmt.Println("list:", iter.Item().Key)
+		key := strings.TrimPrefix(iter.Item().Key, d.prefix)
+		key = strings.TrimSuffix(key, "/")
+		fmt.Println("list:", iter.Item().Key, key)
 		entry := fuse.Dirent{
-			Name: iter.Item().Key,
+			Name: key,
 			Type: fuse.DT_File,
 		}
 		if iter.Item().IsPrefix {

@@ -29,14 +29,14 @@ func main() {
 	mountpoint := flag.String("mountpoint", "", "location to mount the Storj bucket")
 	flag.Parse()
 
-	c, err := fuse.Mount(
+	fuseConn, err := fuse.Mount(
 		*mountpoint,
 		fuse.FSName("storj"),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer c.Close()
+	defer fuseConn.Close()
 
 	ctx := context.Background()
 	project := setupUplink(ctx, *access, *bucketname)
@@ -44,12 +44,12 @@ func main() {
 
 	pwd, err := os.Getwd()
 	if err != nil {
-		fmt.Println("getwd err:", err)
+		logE("getwd err:", err)
 	}
 	path := filepath.Join(pwd, *mountpoint)
 	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname, path))
 
-	err = fs.Serve(c, NewFS(project, *bucketname))
+	err = fs.Serve(fuseConn, NewFS(project, *bucketname))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -103,26 +103,21 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
+func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 	fmt.Println("dir.Lookup called")
 	start := time.Now()
 
-	objKey = d.prefix + objKey
-	object, err := d.project.StatObject(ctx, d.bucketname, objKey)
+	objectKey = d.prefix + objectKey
+	object, err := d.project.StatObject(ctx, d.bucketname, objectKey)
 	if err != nil {
 		if errors.Is(err, uplink.ErrObjectNotFound) {
-			// todo: currently this will create a new dir if the object
-			// isn't found
-			// ideally we would also want to listObjects to see if its a dir
-			// with this name, and then if not return...
-			// return nil, syscall.ENOENT
-			// however we are deciding to do this for performance
-			// Separate question: how do you handle mkdir (since storj doesnt
-			// create a dir unless there is a file in it. S3 fuse handles this
-			// by making special files with metadata about that this is a dir)
-			d := NewDir(d.project, d.bucketname, objKey+"/")
+			// todo: currently this will create a new dir if the object isn't found
+			// ideally we want to listObjects to see if the objectKey is a dir
+			// and return err syscall.ENOENT if its not a dir either
+			// however we are deciding to do this hack for now for performance gain
+			d := NewDir(d.project, d.bucketname, objectKey+"/")
 			fmt.Println(time.Since(start).Milliseconds(),
-				" ms, prefix dir lookup for object:", objKey,
+				" ms, prefix dir lookup for object:", objectKey,
 			)
 			return d, nil
 		}
@@ -174,8 +169,6 @@ type File struct {
 var _ fs.Node = (*File)(nil)
 var _ fs.HandleReader = (*File)(nil)
 
-// var _ fs.HandleReadAller = (*File)(nil)
-
 func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *File {
 	return &File{
 		obj:        obj,
@@ -202,50 +195,24 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	fmt.Println("file.Read called", f.obj.Key)
-	fmt.Printf("req: #%v\n", req)
 	d, err := f.project.DownloadObject(ctx,
 		f.bucketname,
 		f.obj.Key,
 		&uplink.DownloadOptions{Offset: req.Offset, Length: int64(req.Size)},
 	)
-	fmt.Println("down 1")
+	defer d.Close()
 	if err != nil {
-		fmt.Println("down 2")
 		return logE("Read DownloadObject", err)
 	}
 
-	defer d.Close()
-
-	fmt.Println("req.Size:", req.Size)
 	buf := make([]byte, req.Size)
-	n, err := d.Read(buf)
-	fmt.Println("n:", n)
+	_, err = d.Read(buf)
 	if err != nil {
-		if err == io.EOF {
-			resp.Data = buf[:n]
-			return nil
+		if err != io.EOF {
+			return logE("Read", err)
 		}
-		return logE("Read", err)
 	}
-	fmt.Println("n:", n)
-	resp.Data = buf[:]
 
+	resp.Data = buf[:]
 	return nil
 }
-
-// func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
-// 	fmt.Println("file.ReadAll called")
-// 	start := time.Now()
-// 	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
-// 	if err != nil {
-// 		return nil, logE("readAll download ", err)
-// 	}
-// 	defer object.Close()
-
-// 	b, err := ioutil.ReadAll(object)
-// 	if err != nil {
-// 		return nil, logE("readAll", err)
-// 	}
-// 	fmt.Println(time.Since(start).Milliseconds(), "ms, file ReadAll for", f.obj.Key)
-// 	return b, nil
-// }

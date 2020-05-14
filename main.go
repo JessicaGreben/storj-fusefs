@@ -43,7 +43,7 @@ func main() {
 
 	pwd, err := os.Getwd()
 	if err != nil {
-		log.Println("getwd err:", err)
+		fmt.Println("getwd err:", err)
 	}
 	path := filepath.Join(pwd, *mountpoint)
 	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname, path))
@@ -120,7 +120,7 @@ func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 			// create a dir unless there is a file in it. S3 fuse handles this
 			// by making special files with metadata about that this is a dir)
 			d := NewDir(d.project, d.bucketname, objKey+"/")
-			log.Println(time.Since(start).Milliseconds(),
+			fmt.Println(time.Since(start).Milliseconds(),
 				" ms, prefix dir lookup for object:", objKey,
 			)
 			return d, nil
@@ -129,7 +129,7 @@ func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 	}
 
 	f := newFile(object, d.project, d.bucketname)
-	log.Println(time.Since(start).Milliseconds(),
+	fmt.Println(time.Since(start).Milliseconds(),
 		" ms, file dir lookup for object", object,
 	)
 	return f, nil
@@ -159,7 +159,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		return dirDirs, logE("iter.Err", err)
 	}
 
-	log.Println(time.Since(start).Milliseconds(), "ms, dir ReadDirAll")
+	fmt.Println(time.Since(start).Milliseconds(), "ms, dir ReadDirAll")
 	fmt.Println(dirDirs)
 	return dirDirs, nil
 }
@@ -201,6 +201,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	fmt.Println("file.Read called", f.obj.Key)
+	fmt.Printf("req: #%v\n", req)
 	d, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, &uplink.DownloadOptions{Offset: req.Offset})
 	if err != nil {
 		return logE("Read DownloadObject", err)

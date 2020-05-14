@@ -55,6 +55,13 @@ func main() {
 	}
 }
 
+func logE(msg string, err error) error {
+	if err != nil {
+		log.Printf("%s error: %+v\n", msg, err)
+	}
+	return err
+}
+
 type FS struct {
 	root fs.Node
 }
@@ -72,9 +79,9 @@ func (fs FS) Root() (fs.Node, error) {
 }
 
 type Dir struct {
-	project    *uplink.Project
 	bucketname string
 	prefix     string
+	project    *uplink.Project
 }
 
 var _ fs.Node = (*Dir)(nil)
@@ -82,39 +89,44 @@ var _ fs.HandleReadDirAller = (*Dir)(nil)
 
 func NewDir(project *uplink.Project, bucketname, prefix string) *Dir {
 	return &Dir{
-		prefix:     prefix,
 		bucketname: bucketname,
+		prefix:     prefix,
 		project:    project,
 	}
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	fmt.Println("attr")
-	a.Mode = os.ModeDir | 0o777
+	fmt.Println("dir.Attr called")
+	a.Mode = os.ModeDir | 0o555
 	a.Uid = uid
 	a.Gid = gid
 	return nil
 }
 
 func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
+	fmt.Println("dir.Lookup called")
 	start := time.Now()
-	fmt.Println("loookup")
 
 	objKey = d.prefix + objKey
 	object, err := d.project.StatObject(ctx, d.bucketname, objKey)
 	if err != nil {
 		if errors.Is(err, uplink.ErrObjectNotFound) {
-			// todo: listObjects to see if its a dir here
+			// todo: currently this will create a new dir if the object
+			// isn't found
+			// ideally we would also want to listObjects to see if its a dir
+			// with this name, and then if not return...
 			// return nil, syscall.ENOENT
+			// however we are deciding to do this for performance
+			// Separate question: how do you handle mkdir (since storj doesnt
+			// create a dir unless there is a file in it. S3 fuse handles this
+			// by making special files with metadata about that this is a dir)
 			d := NewDir(d.project, d.bucketname, objKey+"/")
 			log.Println(time.Since(start).Milliseconds(),
 				" ms, prefix dir lookup for object:", objKey,
 			)
 			return d, nil
-
 		}
-		fmt.Println("err:", err)
-		return nil, err
+		return nil, logE("lookup StatObject", err)
 	}
 
 	f := newFile(object, d.project, d.bucketname)
@@ -125,11 +137,10 @@ func (d *Dir) Lookup(ctx context.Context, objKey string) (fs.Node, error) {
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	fmt.Println("dir.ReadDirAll called")
 	start := time.Now()
-	// A Dirent represents a single directory entry.
 	var dirDirs = []fuse.Dirent{}
 
-	fmt.Println("ListObjects:", d.bucketname)
 	iter := d.project.ListObjects(ctx, d.bucketname, &uplink.ListObjectsOptions{Prefix: d.prefix})
 	for iter.Next() {
 		key := strings.TrimPrefix(iter.Item().Key, d.prefix)
@@ -146,8 +157,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		dirDirs = append(dirDirs, entry)
 	}
 	if err := iter.Err(); err != nil {
-		log.Fatal("listObj: ", err)
-		return dirDirs, err
+		return dirDirs, logE("iter.Err", err)
 	}
 
 	log.Println(time.Since(start).Milliseconds(), "ms, dir ReadDirAll")
@@ -161,9 +171,8 @@ type File struct {
 	bucketname string
 }
 
-// fs.Node is the interface required of a file or directory.
 var _ fs.Node = (*File)(nil)
-
+var _ fs.HandleReader = (*File)(nil)
 var _ fs.HandleReadAller = (*File)(nil)
 
 func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *File {
@@ -175,6 +184,7 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *Fi
 }
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
+	fmt.Println("file.Attr called")
 	start := time.Now()
 	a.Mode = 0o444
 	a.Uid = uid
@@ -182,24 +192,44 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 	s, err := f.project.StatObject(ctx, f.bucketname, f.obj.Key)
 	if err != nil {
-		log.Fatal("object stat: ", err)
+		return logE("file.Attr statObject", err)
 	}
 	a.Size = uint64(s.System.ContentLength)
 	log.Println(time.Since(start).Milliseconds(), "ms, file Attr for", f.obj.Key)
 	return nil
 }
 
+func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	fmt.Println("file.Read called")
+	d, err := f.project.DownloadObject(ctx, f.bucketname, "", &uplink.DownloadOptions{Offset: req.Offset})
+	if err != nil {
+		fmt.Println("Read DownloadObject", err)
+		return err
+	}
+
+	buf := make([]byte, req.Size)
+	_, err = d.Read(buf)
+	if err != nil {
+		fmt.Println("Read", err)
+		return err
+	}
+	resp.Data = buf
+
+	return nil
+}
+
 func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
+	fmt.Println("file.ReadAll called")
 	start := time.Now()
 	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
 	if err != nil {
-		log.Fatal("download: ", err)
+		logE("readAll download ", err)
 	}
 	defer object.Close()
 
 	b, err := ioutil.ReadAll(object)
 	if err != nil {
-		log.Fatal("readAll: ", err)
+		logE("readAll", err)
 	}
 	log.Println(time.Since(start).Milliseconds(), "ms, file ReadAll for", f.obj.Key)
 	return b, nil

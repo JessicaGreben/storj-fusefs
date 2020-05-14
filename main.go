@@ -200,8 +200,8 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	fmt.Println("file.Read called")
-	d, err := f.project.DownloadObject(ctx, f.bucketname, "", &uplink.DownloadOptions{Offset: req.Offset})
+	fmt.Println("file.Read called", f.obj.Key)
+	d, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, &uplink.DownloadOptions{Offset: req.Offset})
 	if err != nil {
 		return logE("Read DownloadObject", err)
 	}

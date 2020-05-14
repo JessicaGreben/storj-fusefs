@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -173,7 +172,8 @@ type File struct {
 
 var _ fs.Node = (*File)(nil)
 var _ fs.HandleReader = (*File)(nil)
-var _ fs.HandleReadAller = (*File)(nil)
+
+// var _ fs.HandleReadAller = (*File)(nil)
 
 func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *File {
 	return &File{
@@ -195,7 +195,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		return logE("file.Attr statObject", err)
 	}
 	a.Size = uint64(s.System.ContentLength)
-	log.Println(time.Since(start).Milliseconds(), "ms, file Attr for", f.obj.Key)
+	fmt.Println(time.Since(start).Milliseconds(), "ms, file Attr for", f.obj.Key)
 	return nil
 }
 
@@ -203,34 +203,32 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	fmt.Println("file.Read called")
 	d, err := f.project.DownloadObject(ctx, f.bucketname, "", &uplink.DownloadOptions{Offset: req.Offset})
 	if err != nil {
-		fmt.Println("Read DownloadObject", err)
-		return err
+		return logE("Read DownloadObject", err)
 	}
 
 	buf := make([]byte, req.Size)
 	_, err = d.Read(buf)
 	if err != nil {
-		fmt.Println("Read", err)
-		return err
+		return logE("Read", err)
 	}
 	resp.Data = buf
 
 	return nil
 }
 
-func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
-	fmt.Println("file.ReadAll called")
-	start := time.Now()
-	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
-	if err != nil {
-		logE("readAll download ", err)
-	}
-	defer object.Close()
+// func (f *File) ReadAll(ctx context.Context) ([]byte, error) {
+// 	fmt.Println("file.ReadAll called")
+// 	start := time.Now()
+// 	object, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, nil)
+// 	if err != nil {
+// 		return nil, logE("readAll download ", err)
+// 	}
+// 	defer object.Close()
 
-	b, err := ioutil.ReadAll(object)
-	if err != nil {
-		logE("readAll", err)
-	}
-	log.Println(time.Since(start).Milliseconds(), "ms, file ReadAll for", f.obj.Key)
-	return b, nil
-}
+// 	b, err := ioutil.ReadAll(object)
+// 	if err != nil {
+// 		return nil, logE("readAll", err)
+// 	}
+// 	fmt.Println(time.Since(start).Milliseconds(), "ms, file ReadAll for", f.obj.Key)
+// 	return b, nil
+// }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -203,16 +204,25 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	fmt.Println("file.Read called", f.obj.Key)
 	fmt.Printf("req: #%v\n", req)
 	d, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, &uplink.DownloadOptions{Offset: req.Offset})
+	fmt.Println("down 1")
 	if err != nil {
+		fmt.Println("down 2")
 		return logE("Read DownloadObject", err)
 	}
 
+	fmt.Println("req.Size:", req.Size)
 	buf := make([]byte, req.Size)
-	_, err = d.Read(buf)
+	n, err := d.Read(buf)
+	fmt.Println("n:", n)
 	if err != nil {
+		if err == io.EOF {
+			resp.Data = buf[:n]
+			return nil
+		}
 		return logE("Read", err)
 	}
-	resp.Data = buf
+	fmt.Println("n:", n)
+	resp.Data = buf[:]
 
 	return nil
 }

@@ -203,12 +203,18 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	fmt.Println("file.Read called", f.obj.Key)
 	fmt.Printf("req: #%v\n", req)
-	d, err := f.project.DownloadObject(ctx, f.bucketname, f.obj.Key, &uplink.DownloadOptions{Offset: req.Offset})
+	d, err := f.project.DownloadObject(ctx,
+		f.bucketname,
+		f.obj.Key,
+		&uplink.DownloadOptions{Offset: req.Offset, Length: int64(req.Size)},
+	)
 	fmt.Println("down 1")
 	if err != nil {
 		fmt.Println("down 2")
 		return logE("Read DownloadObject", err)
 	}
+
+	defer d.Close()
 
 	fmt.Println("req.Size:", req.Size)
 	buf := make([]byte, req.Size)

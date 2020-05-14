@@ -2,54 +2,24 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"log"
-	"os"
 
 	"storj.io/uplink"
 )
 
-func setupUplink(ctx context.Context, access, bucketname string) *uplink.Project {
+func setupUplink(ctx context.Context, access, bucketname string) (*uplink.Project, error) {
 	a, err := uplink.ParseAccess(access)
 	if err != nil {
-		log.Fatal("parseAccess ", err)
-		return nil
+		return nil, err
 	}
 	project, err := uplink.OpenProject(ctx, a)
 	if err != nil {
-		log.Fatal("OpenProject ", err)
-		return nil
+		return nil, err
 	}
 
 	// check that the bucket exists
 	_, err = project.StatBucket(ctx, bucketname)
 	if err != nil {
-		log.Fatal("StatBucket ", err)
-		return nil
+		return nil, err
 	}
-	return project
-}
-
-func read(ctx context.Context, p *uplink.Project, bucketname string) {
-	object, err := p.DownloadObject(ctx, bucketname, "go.mod", nil)
-	if err != nil {
-		log.Fatal("download: ", err)
-	}
-	defer object.Close()
-
-	_, err = io.Copy(os.Stdout, object)
-	if err != nil {
-		log.Fatal("io.Copy: ", err)
-	}
-}
-
-func ls(ctx context.Context, p *uplink.Project, bucketname string) {
-	iter := p.ListObjects(ctx, bucketname, nil)
-	for iter.Next() {
-		fmt.Println(iter.Item().Key)
-	}
-	if err := iter.Err(); err != nil {
-		log.Fatal("listObj: ", err)
-	}
+	return project, nil
 }

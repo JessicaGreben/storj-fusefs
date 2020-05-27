@@ -117,12 +117,16 @@ func isDir(ctx context.Context, d *Dir, objectKey string) bool {
 		item := objectIter.Item()
 		fmt.Println("objectKey:", objectKey)
 		fmt.Println("item.Key:", item.Key)
-		key := strings.TrimPrefix(item.Key, d.prefix)
-		key = strings.TrimSuffix(key, "/")
-		fmt.Println("key:", key)
-		if item.IsPrefix && key == objectKey {
+		// key := strings.TrimPrefix(item.Key, d.prefix)
+		// key = strings.TrimSuffix(key, "/")
+		// fmt.Println("key:", key)
+		// if item.key contains key+/ or /+key+/
+		if strings.Contains(item.Key, objectKey+"/") || strings.Contains(item.Key, "/"+objectKey+"/") {
 			return true
 		}
+		// if key == objectKey {
+		// 	return true
+		// }
 	}
 	return false
 }

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"bazil.org/fuse"
@@ -77,24 +78,50 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 	object, err := d.project.StatObject(ctx, d.bucketname, objectKey)
 	if err != nil {
 		if errors.Is(err, uplink.ErrObjectNotFound) {
-			// todo: currently this will create a new dir if the object isn't found
-			// ideally we want to listObjects to see if the objectKey is a dir
-			// and return err syscall.ENOENT if its not a dir either
-			// however we are deciding to do this hack for now for performance gain
-			d := NewDir(d.project, d.bucketname, objectKey+"/")
-			fmt.Println(time.Since(start).Milliseconds(),
-				" ms, prefix dir lookup for object:", objectKey,
-			)
-			return d, nil
+			if ok := isDir(ctx, d, objectKey); ok {
+				// todo: currently this will create a new dir if the object isn't found
+				// ideally we want to listObjects to see if the objectKey is a dir
+				// and return err syscall.ENOENT if its not a dir either
+				// however we are deciding to do this hack for now for performance gain
+				d := NewDir(d.project, d.bucketname, objectKey+"/")
+				fmt.Println(time.Since(start).Milliseconds(),
+					" ms, prefix dir lookup for object:", objectKey,
+				)
+				return d, nil
+			}
 		}
-		return nil, logE("lookup StatObject", err)
+		return nil, logE("lookup object or dir does not exist", syscall.ENOENT)
 	}
 
-	f := newFile(object, d.project, d.bucketname)
+	downloader, err := d.project.DownloadObject(ctx,
+		d.bucketname,
+		object.Key,
+		&uplink.DownloadOptions{Length: int64(-1)},
+	)
+	// defer ds.Close()
+	if err != nil {
+		return nil, logE("DownloadObject", err)
+	}
+
+	f := newFile(object, d.project, d.bucketname, downloader)
 	fmt.Println(time.Since(start).Milliseconds(),
 		" ms, file dir lookup for object", object,
 	)
 	return f, nil
+}
+
+func isDir(ctx context.Context, d *Dir, objectKey string) bool {
+	fmt.Println("isDir")
+	objectIter := d.project.ListObjects(ctx, d.bucketname, nil)
+	for objectIter.Next() {
+		item := objectIter.Item()
+		fmt.Println("objectKey:", objectKey)
+		fmt.Println("item.Key:", item.Key)
+		if item.IsPrefix && item.Key == objectKey {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
@@ -127,19 +154,22 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 }
 
 type File struct {
-	obj        *uplink.Object
-	project    *uplink.Project
-	bucketname string
+	obj              *uplink.Object
+	project          *uplink.Project
+	bucketname       string
+	downloader       *uplink.Download
+	downloaderOffset int64
 }
 
 var _ fs.Node = (*File)(nil)
 var _ fs.HandleReader = (*File)(nil)
 
-func newFile(obj *uplink.Object, project *uplink.Project, bucketname string) *File {
+func newFile(obj *uplink.Object, project *uplink.Project, bucketname string, downloader *uplink.Download) *File {
 	return &File{
 		obj:        obj,
 		project:    project,
 		bucketname: bucketname,
+		downloader: downloader,
 	}
 }
 
@@ -161,24 +191,20 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	fmt.Println("file.Read called", f.obj.Key)
-	d, err := f.project.DownloadObject(ctx,
-		f.bucketname,
-		f.obj.Key,
-		&uplink.DownloadOptions{Offset: req.Offset, Length: int64(req.Size)},
-	)
-	defer d.Close()
-	if err != nil {
-		return logE("Read DownloadObject", err)
+	if req.Offset != f.downloaderOffset {
+		return logE(fmt.Sprintf("offset doesn't match. expected %d, got %d",
+			f.downloaderOffset,
+			req.Offset,
+		), nil)
 	}
-
 	buf := make([]byte, req.Size)
-	_, err = d.Read(buf)
+	_, err := f.downloader.Read(buf)
 	if err != nil {
 		if err != io.EOF {
 			return logE("Read", err)
 		}
 	}
-
 	resp.Data = buf[:]
+	f.downloaderOffset += int64(len(resp.Data))
 	return nil
 }

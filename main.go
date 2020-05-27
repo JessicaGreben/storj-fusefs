@@ -30,10 +30,10 @@ func main() {
 
 	ctx := context.Background()
 	project, err := setupUplink(ctx, *access, *bucketname)
-	defer project.Close()
 	if err != nil {
 		logE("setupUplink", err)
 	}
+	defer project.Close()
 
 	pwd, err := os.Getwd()
 	if err != nil {

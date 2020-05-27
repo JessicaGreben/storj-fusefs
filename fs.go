@@ -112,13 +112,14 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 
 func isDir(ctx context.Context, d *Dir, objectKey string) bool {
 	fmt.Println("isDir")
-	objectIter := d.project.ListObjects(ctx, d.bucketname, nil)
+	objectIter := d.project.ListObjects(ctx, d.bucketname, &uplink.ListObjectsOptions{Recursive: true})
 	for objectIter.Next() {
 		item := objectIter.Item()
 		fmt.Println("objectKey:", objectKey)
 		fmt.Println("item.Key:", item.Key)
 		key := strings.TrimPrefix(item.Key, d.prefix)
 		key = strings.TrimSuffix(key, "/")
+		fmt.Println("key:", key)
 		if item.IsPrefix && key == objectKey {
 			return true
 		}

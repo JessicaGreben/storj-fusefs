@@ -63,7 +63,7 @@ func NewDir(project *uplink.Project, bucketname, prefix string) *Dir {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	fmt.Println("dir.Attr called")
+	log.Println("dir.Attr called")
 	a.Mode = os.ModeDir | 0o555
 	a.Uid = uid
 	a.Gid = gid
@@ -71,23 +71,14 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
-	fmt.Println("dir.Lookup called")
-	start := time.Now()
+	log.Println("dir.Lookup called")
 
 	objectKey = d.prefix + objectKey
 	object, err := d.project.StatObject(ctx, d.bucketname, objectKey)
 	if err != nil {
 		if errors.Is(err, uplink.ErrObjectNotFound) {
 			if ok := isDir(ctx, d, objectKey); ok {
-				// todo: currently this will create a new dir if the object isn't found
-				// ideally we want to listObjects to see if the objectKey is a dir
-				// and return err syscall.ENOENT if its not a dir either
-				// however we are deciding to do this hack for now for performance gain
-				d := NewDir(d.project, d.bucketname, objectKey+"/")
-				fmt.Println(time.Since(start).Milliseconds(),
-					" ms, prefix dir lookup for object:", objectKey,
-				)
-				return d, nil
+				return NewDir(d.project, d.bucketname, objectKey+"/"), nil
 			}
 		}
 		return nil, logE("lookup object or dir does not exist", syscall.ENOENT)
@@ -103,36 +94,25 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 		return nil, logE("DownloadObject", err)
 	}
 
-	f := newFile(object, d.project, d.bucketname, downloader)
-	fmt.Println(time.Since(start).Milliseconds(),
-		" ms, file dir lookup for object", object,
-	)
-	return f, nil
+	return newFile(object, d.project, d.bucketname, downloader), nil
 }
 
 func isDir(ctx context.Context, d *Dir, objectKey string) bool {
-	fmt.Println("isDir")
-	objectIter := d.project.ListObjects(ctx, d.bucketname, &uplink.ListObjectsOptions{Recursive: true})
+	objectIter := d.project.ListObjects(ctx,
+		d.bucketname,
+		&uplink.ListObjectsOptions{Recursive: true},
+	)
 	for objectIter.Next() {
 		item := objectIter.Item()
-		fmt.Println("objectKey:", objectKey)
-		fmt.Println("item.Key:", item.Key)
-		// key := strings.TrimPrefix(item.Key, d.prefix)
-		// key = strings.TrimSuffix(key, "/")
-		// fmt.Println("key:", key)
-		// if item.key contains key+/ or /+key+/
 		if strings.Contains(item.Key, objectKey+"/") || strings.Contains(item.Key, "/"+objectKey+"/") {
 			return true
 		}
-		// if key == objectKey {
-		// 	return true
-		// }
 	}
 	return false
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	fmt.Println("dir.ReadDirAll called")
+	log.Println("dir.ReadDirAll called")
 	start := time.Now()
 	var dirDirs = []fuse.Dirent{}
 
@@ -140,13 +120,11 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	for iter.Next() {
 		key := strings.TrimPrefix(iter.Item().Key, d.prefix)
 		key = strings.TrimSuffix(key, "/")
-		fmt.Println("list:", iter.Item().Key, key)
 		entry := fuse.Dirent{
 			Name: key,
 			Type: fuse.DT_File,
 		}
 		if iter.Item().IsPrefix {
-			fmt.Println("is prfix")
 			entry.Type = fuse.DT_Dir
 		}
 		dirDirs = append(dirDirs, entry)
@@ -155,8 +133,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		return dirDirs, logE("iter.Err", err)
 	}
 
-	fmt.Println(time.Since(start).Milliseconds(), "ms, dir ReadDirAll")
-	fmt.Println(dirDirs)
+	log.Println(time.Since(start).Milliseconds(), "ms, dir ReadDirAll")
+	log.Println(dirDirs)
 	return dirDirs, nil
 }
 
@@ -181,7 +159,7 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string, dow
 }
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
-	fmt.Println("file.Attr called")
+	log.Println("file.Attr called")
 	start := time.Now()
 	a.Mode = 0o444
 	a.Uid = uid
@@ -192,12 +170,12 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 		return logE("file.Attr statObject", err)
 	}
 	a.Size = uint64(s.System.ContentLength)
-	fmt.Println(time.Since(start).Milliseconds(), "ms, file Attr for", f.obj.Key)
+	log.Println(time.Since(start).Milliseconds(), "ms, file Attr for", f.obj.Key)
 	return nil
 }
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	fmt.Println("file.Read called", f.obj.Key)
+	log.Println("file.Read called", f.obj.Key)
 	if req.Offset != f.downloaderOffset {
 		return logE(fmt.Sprintf("offset doesn't match. expected %d, got %d",
 			f.downloaderOffset,

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -105,11 +104,8 @@ func isDir(ctx context.Context, d *Dir, objectKey string) bool {
 			Recursive: true,
 		},
 	)
-	fmt.Println("prefix:", d.prefix)
 	if objectIter.Next() {
 		item := objectIter.Item()
-		fmt.Println("item:", item.Key)
-		fmt.Println("objectKey:", objectKey)
 		if strings.Contains(item.Key, objectKey+"/") || strings.Contains(item.Key, "/"+objectKey+"/") {
 			return true
 		}

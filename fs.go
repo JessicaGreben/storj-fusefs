@@ -100,10 +100,16 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 func isDir(ctx context.Context, d *Dir, objectKey string) bool {
 	objectIter := d.project.ListObjects(ctx,
 		d.bucketname,
-		&uplink.ListObjectsOptions{Recursive: true},
+		&uplink.ListObjectsOptions{
+			Prefix:    d.prefix,
+			Recursive: true,
+		},
 	)
-	for objectIter.Next() {
+	fmt.Println("prefix:", d.prefix)
+	if objectIter.Next() {
 		item := objectIter.Item()
+		fmt.Println("item:", item.Key)
+		fmt.Println("objectKey:", objectKey)
 		if strings.Contains(item.Key, objectKey+"/") || strings.Contains(item.Key, "/"+objectKey+"/") {
 			return true
 		}
@@ -164,12 +170,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Mode = 0o444
 	a.Uid = uid
 	a.Gid = gid
-
-	s, err := f.project.StatObject(ctx, f.bucketname, f.obj.Key)
-	if err != nil {
-		return logE("file.Attr statObject", err)
-	}
-	a.Size = uint64(s.System.ContentLength)
+	a.Size = uint64(f.downloader.Info().System.ContentLength)
 	log.Println(time.Since(start).Milliseconds(), "ms, file Attr for", f.obj.Key)
 	return nil
 }
@@ -177,10 +178,20 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	log.Println("file.Read called", f.obj.Key)
 	if req.Offset != f.downloaderOffset {
-		return logE(fmt.Sprintf("offset doesn't match. expected %d, got %d",
-			f.downloaderOffset,
-			req.Offset,
-		), nil)
+		err := f.downloader.Close()
+		if err != nil {
+			logE("downloader.Close()", err)
+		}
+		downloader, err := f.project.DownloadObject(ctx,
+			f.bucketname,
+			f.obj.Key,
+			&uplink.DownloadOptions{Offset: req.Offset, Length: int64(-1)},
+		)
+		if err != nil {
+			return logE("DownloadObject", err)
+		}
+		f.downloader = downloader
+		f.downloaderOffset = 0
 	}
 	buf := make([]byte, req.Size)
 	_, err := f.downloader.Read(buf)

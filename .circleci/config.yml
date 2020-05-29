@@ -3,7 +3,7 @@ jobs:
   build:
     docker:
       - image: cimg/go:1.13
-    working_directory: /go/src/github.com/jessicagreben/test-fs
+    working_directory: ~/go/src/github.com/jessicagreben/test-fs
     steps:
       - checkout
       - run: go get -v -t -d ./...

@@ -101,7 +101,7 @@ func isDir(ctx context.Context, d *Dir, objectKey string) bool {
 	objectIter := d.project.ListObjects(ctx,
 		d.bucketname,
 		&uplink.ListObjectsOptions{
-			Prefix:    d.prefix,
+			Prefix:    objectKey + "/",
 			Recursive: true,
 		},
 	)

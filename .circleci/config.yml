@@ -1,10 +1,14 @@
 version: 2
 jobs:
-  build:
-    docker:
-      - image: cimg/go:1.13
-    working_directory: ~/go/src/github.com/jessicagreben/test-fs
-    steps:
-      - checkout
-      - run: go get -v -t -d ./...
-      - run: go test -v ./...
+    one:
+        docker:
+        - image: cimg/go:1.13
+        working_directory: ~/go/src/github.com/jessicagreben/test-fs
+        steps:
+            - checkout
+            - run: GOOS=linux go build -o test-fs ~/go/src/github.com/jessicagreben/test-fs
+            - run: makdir -p mt/1
+            - run:
+                command: ./test-fs --access=$access --bucket=$bucketname -mountpoint=mt/1
+                background: true
+            - run: ./test-script.sh

@@ -7,6 +7,7 @@ jobs:
         steps:
             - checkout
             - run: GOOS=linux go build -o test-fs ~/go/src/github.com/jessicagreben/test-fs
+            - run: apt install fuse
             - run: mkdir -p mt/1
             - run:
                 command: ./test-fs --access=$access --bucket=$bucketname -mountpoint=mt/1

@@ -8,7 +8,7 @@ jobs:
         steps:
             - checkout
             - run: sudo apt-get update && sudo apt-get install -y fuse
-            - run: curl -O https://storage.googleapis.com/golang/go1.13.linux-amd64.tar.gz && tar -xvf go1.12.9.linux-amd64.tar.gz && sudo chown -R root:root ./go && sudo mv go /usr/local
+            - run: curl -O https://storage.googleapis.com/golang/go1.13.linux-amd64.tar.gz && tar -xvf go1.13.linux-amd64.tar.gz && sudo chown -R root:root ./go && sudo mv go /usr/local
             - run: GOOS=linux go build -o test-fs ~/go/src/github.com/jessicagreben/test-fs
             - run: mkdir -p mt/1
             - run:

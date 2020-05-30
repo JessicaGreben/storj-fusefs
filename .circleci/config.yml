@@ -4,12 +4,12 @@ jobs:
         machine:
             image: ubuntu-1604:201903-01
             # image: cimg/go:1.13
-        working_directory: ~/go/src/github.com/jessicagreben/test-fs
+        working_directory: /home/circleci/go/src/github.com/jessicagreben/test-fs
         steps:
             - checkout
             - run: sudo apt-get update && sudo apt-get install -y fuse
             # - run: curl -O https://storage.googleapis.com/golang/go1.13.linux-amd64.tar.gz && tar -xvf go1.13.linux-amd64.tar.gz && sudo chown -R root:root ./go && sudo mv go /usr/local
-            - run: GOOS=linux go build -o test-fs ~/go/src/github.com/jessicagreben/test-fs
+            - run: GOOS=linux go build -o test-fs /home/circleci/go/src/github.com/jessicagreben/test-fs
             - run: mkdir -p mt/1
             - run:
                 command: ./test-fs --access=$access --bucket=$bucketname -mountpoint=mt/1

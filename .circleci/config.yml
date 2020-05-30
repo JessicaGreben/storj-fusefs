@@ -1,6 +1,6 @@
 version: 2
 jobs:
-    one:
+    build:
         docker:
         - image: cimg/go:1.13
         working_directory: ~/go/src/github.com/jessicagreben/test-fs
@@ -12,3 +12,4 @@ jobs:
                 command: ./test-fs --access=$access --bucket=$bucketname -mountpoint=mt/1
                 background: true
             - run: ./test-script.sh
+                        

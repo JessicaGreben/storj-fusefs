@@ -3,6 +3,8 @@ jobs:
     build:
         machine:
             image: ubuntu-1604:201903-01
+            environment:
+                GO111MODULE: "on"
             # image: cimg/go:1.13
         working_directory: /home/circleci/go/src/github.com/jessicagreben/test-fs
         steps:

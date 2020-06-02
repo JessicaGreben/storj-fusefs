@@ -4,7 +4,7 @@ jobs:
         machine:
             image: ubuntu-1604:201903-01
             # image: cimg/go:1.13
-        working_directory: go/src/github.com/jessicagreben/test-fs
+        working_directory: /home/circleci/go/src/github.com/jessicagreben/test-fs
         steps:
             - checkout
             - run: sudo apt-get update && sudo apt-get install -y fuse

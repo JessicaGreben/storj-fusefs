@@ -174,6 +174,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	log.Println("file.Read called", f.obj.Key)
 	if req.Offset != f.downloaderOffset {
+		log.Println("req.Offset != f.downloaderOffset", req.Offset, f.downloaderOffset)
 		err := f.downloader.Close()
 		if err != nil {
 			logE("downloader.Close()", err)

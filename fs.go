@@ -86,8 +86,7 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 	downloader, err := d.project.DownloadObject(ctx,
 		d.bucketname,
 		object.Key,
-		nil,
-		// &uplink.DownloadOptions{Length: int64(-1)},
+		&uplink.DownloadOptions{Length: object.System.ContentLength},
 	)
 	// defer ds.Close()
 	if err != nil {

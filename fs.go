@@ -86,7 +86,8 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 	downloader, err := d.project.DownloadObject(ctx,
 		d.bucketname,
 		object.Key,
-		&uplink.DownloadOptions{Length: int64(-1)},
+		nil,
+		// &uplink.DownloadOptions{Length: int64(-1)},
 	)
 	// defer ds.Close()
 	if err != nil {
@@ -173,6 +174,7 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	log.Println("file.Read called", f.obj.Key)
+
 	if req.Offset != f.downloaderOffset {
 		log.Println("req.Offset != f.downloaderOffset", req.Offset, f.downloaderOffset)
 		err := f.downloader.Close()
@@ -190,6 +192,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		f.downloader = downloader
 		f.downloaderOffset = 0
 	}
+	log.Println("req.Offset == f.downloaderOffset", req.Offset, f.downloaderOffset)
 	buf := make([]byte, req.Size)
 	_, err := f.downloader.Read(buf)
 	if err != nil {

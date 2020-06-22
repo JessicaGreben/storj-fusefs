@@ -31,7 +31,7 @@ func main() {
 	ctx := context.Background()
 	project, err := setupUplink(ctx, *access, *bucketname)
 	if err != nil {
-		logE("setupUplink", err)
+		log.Fatal(err)
 	}
 	defer project.Close()
 

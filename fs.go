@@ -34,9 +34,9 @@ type FS struct {
 
 var _ fs.FS = (*FS)(nil)
 
-func NewFS(project *uplink.Project, bucketname string) *FS {
+func NewFS(project *uplink.Project, bucketname string, prefix string) *FS {
 	return &FS{
-		root: NewDir(project, bucketname, ""),
+		root: NewDir(project, bucketname, prefix),
 	}
 }
 
@@ -63,7 +63,7 @@ func NewDir(project *uplink.Project, bucketname, prefix string) *Dir {
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	log.Println("dir.Attr called")
-	a.Mode = os.ModeDir | 0o555
+	a.Mode = os.ModeDir | 0o550
 	a.Uid = uid
 	a.Gid = gid
 	return nil
@@ -73,27 +73,22 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 	log.Println("dir.Lookup called")
 
 	objectKey = d.prefix + objectKey
-	object, err := d.project.StatObject(ctx, d.bucketname, objectKey)
+	downloader, err := d.project.DownloadObject(context.Background(),
+		d.bucketname,
+		objectKey,
+		&uplink.DownloadOptions{Length: int64(-1)},
+	)
 	if err != nil {
 		if errors.Is(err, uplink.ErrObjectNotFound) {
 			if ok := isDir(ctx, d, objectKey); ok {
 				return NewDir(d.project, d.bucketname, objectKey+"/"), nil
 			}
+			return nil, logE("lookup object or dir does not exist", syscall.ENOENT)
 		}
-		return nil, logE("lookup object or dir does not exist", syscall.ENOENT)
-	}
-
-	downloader, err := d.project.DownloadObject(context.Background(),
-		d.bucketname,
-		object.Key,
-		&uplink.DownloadOptions{Length: int64(-1)},
-	)
-	// defer ds.Close()
-	if err != nil {
 		return nil, logE("DownloadObject", err)
 	}
 
-	return newFile(object, d.project, d.bucketname, downloader), nil
+	return newFile(d.project, d.bucketname, downloader), nil
 }
 
 func isDir(ctx context.Context, d *Dir, objectKey string) bool {
@@ -116,7 +111,7 @@ func isDir(ctx context.Context, d *Dir, objectKey string) bool {
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	log.Println("dir.ReadDirAll called")
 	start := time.Now()
-	var dirDirs = []fuse.Dirent{}
+	var dirEntries = []fuse.Dirent{}
 
 	iter := d.project.ListObjects(ctx, d.bucketname, &uplink.ListObjectsOptions{Prefix: d.prefix})
 	for iter.Next() {
@@ -129,19 +124,18 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		if iter.Item().IsPrefix {
 			entry.Type = fuse.DT_Dir
 		}
-		dirDirs = append(dirDirs, entry)
+		dirEntries = append(dirEntries, entry)
 	}
 	if err := iter.Err(); err != nil {
-		return dirDirs, logE("iter.Err", err)
+		return dirEntries, logE("iter.Err", err)
 	}
 
 	log.Println(time.Since(start).Milliseconds(), "ms, dir ReadDirAll")
-	log.Println(dirDirs)
-	return dirDirs, nil
+	log.Println(dirEntries)
+	return dirEntries, nil
 }
 
 type File struct {
-	obj              *uplink.Object
 	project          *uplink.Project
 	bucketname       string
 	downloader       *uplink.Download
@@ -150,10 +144,10 @@ type File struct {
 
 var _ fs.Node = (*File)(nil)
 var _ fs.HandleReader = (*File)(nil)
+var _ fs.HandleReleaser = (*File)(nil)
 
-func newFile(obj *uplink.Object, project *uplink.Project, bucketname string, downloader *uplink.Download) *File {
+func newFile(project *uplink.Project, bucketname string, downloader *uplink.Download) *File {
 	return &File{
-		obj:        obj,
 		project:    project,
 		bucketname: bucketname,
 		downloader: downloader,
@@ -162,27 +156,31 @@ func newFile(obj *uplink.Object, project *uplink.Project, bucketname string, dow
 
 func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	log.Println("file.Attr called")
-	start := time.Now()
-	a.Mode = 0o444
+	a.Mode = 0o440
 	a.Uid = uid
 	a.Gid = gid
 	a.Size = uint64(f.downloader.Info().System.ContentLength)
-	log.Println(time.Since(start).Milliseconds(), "ms, file Attr for", f.obj.Key)
+	a.Ctime = f.downloader.Info().System.Created
+	a.Mtime = f.downloader.Info().System.Created
+	a.Crtime = f.downloader.Info().System.Created
 	return nil
 }
 
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	log.Println("file.Read called", f.obj.Key)
+	log.Println("file.Read called", f.downloader.Info().Key)
 
-	if req.Offset != f.downloaderOffset {
+	if req.Offset != f.downloaderOffset || f.downloader == nil {
 		log.Println("req.Offset != f.downloaderOffset", req.Offset, f.downloaderOffset)
-		err := f.downloader.Close()
-		if err != nil {
-			logE("downloader.Close()", err)
+		if f.downloader != nil {
+			err := f.downloader.Close()
+			f.downloader = nil
+			if err != nil {
+				logE("downloader.Close()", err)
+			}
 		}
 		downloader, err := f.project.DownloadObject(context.Background(),
 			f.bucketname,
-			f.obj.Key,
+			f.downloader.Info().Key,
 			&uplink.DownloadOptions{Offset: req.Offset, Length: int64(-1)},
 		)
 		if err != nil {
@@ -202,4 +200,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	resp.Data = buf[:n]
 	f.downloaderOffset += int64(n)
 	return nil
+}
+
+func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
+	if f.downloader == nil {
+		return nil
+	}
+	return f.downloader.Close()
 }

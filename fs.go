@@ -83,7 +83,7 @@ func (d *Dir) Lookup(ctx context.Context, objectKey string) (fs.Node, error) {
 		return nil, logE("lookup object or dir does not exist", syscall.ENOENT)
 	}
 
-	downloader, err := d.project.DownloadObject(ctx,
+	downloader, err := d.project.DownloadObject(context.Background(),
 		d.bucketname,
 		object.Key,
 		&uplink.DownloadOptions{Length: int64(-1)},
@@ -180,7 +180,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		if err != nil {
 			logE("downloader.Close()", err)
 		}
-		downloader, err := f.project.DownloadObject(ctx,
+		downloader, err := f.project.DownloadObject(context.Background(),
 			f.bucketname,
 			f.obj.Key,
 			&uplink.DownloadOptions{Offset: req.Offset, Length: int64(-1)},

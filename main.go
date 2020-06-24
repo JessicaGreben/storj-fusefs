@@ -16,6 +16,7 @@ import (
 func main() {
 	access := flag.String("access", "", "access grant to a Storj project")
 	bucketname := flag.String("bucket", "", "name of the Storj bucket to be mounted")
+	prefix := flag.String("prefix", "", "prefix of the Storj bucket to be mounted")
 	mountpoint := flag.String("mountpoint", "", "location to mount the Storj bucket")
 	flag.Parse()
 
@@ -31,7 +32,7 @@ func main() {
 	ctx := context.Background()
 	project, err := setupUplink(ctx, *access, *bucketname)
 	if err != nil {
-		logE("setupUplink", err)
+		log.Fatal(err)
 	}
 	defer project.Close()
 
@@ -40,9 +41,9 @@ func main() {
 		logE("getwd err:", err)
 	}
 	path := filepath.Join(pwd, *mountpoint)
-	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname, path))
+	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname+*prefix, path))
 
-	err = fs.Serve(fuseConn, NewFS(project, *bucketname))
+	err = fs.Serve(fuseConn, NewFS(project, *bucketname, *prefix))
 	if err != nil {
 		log.Fatal(err)
 	}

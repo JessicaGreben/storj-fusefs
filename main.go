@@ -41,7 +41,7 @@ func main() {
 		logE("getwd err:", err)
 	}
 	path := filepath.Join(pwd, *mountpoint)
-	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname, path))
+	log.Println(fmt.Sprintf("starting fuse... mounting bucket sj://%s at path %s", *bucketname+*prefix, path))
 
 	err = fs.Serve(fuseConn, NewFS(project, *bucketname, *prefix))
 	if err != nil {

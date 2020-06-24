@@ -18,7 +18,13 @@ jobs:
       run: |
         go get -v -t -d ./...
     - name: Build
-      run: go build -v .
+      run: |
+        go build -v .
+        echo $GOPATH
+        ls -lah
+        go build /home/runner/go/src/storj.io/uplink
+        ls -lah
+        ./uplink
     - name: Setup
       run: |
         uplink --access=${{ secrets.TEST_ACCESS }} mb sj://test

@@ -32,7 +32,7 @@ jobs:
         uplink --access=${{ secrets.TEST_ACCESS }} cp test.txt sj://test/a/e
         ls -lah
         mkdir -p mt/1
-        ./test-fs -access=${{ secrets.TEST_ACCESS }} -bucket="test" -mountpoint=mt/1
+        ./test-fs -access=${{ secrets.TEST_ACCESS }} -bucket="test" -mountpoint=mt/1 &
     - name: Test
       run: |
         ls -lah mt

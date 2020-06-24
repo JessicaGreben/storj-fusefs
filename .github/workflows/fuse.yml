@@ -1,0 +1,46 @@
+name: fuse
+
+on: [push, pull_request]
+
+jobs:
+  env:
+    ACCESS: ${{secret.TEST_ACCESS}}
+  build:
+    name: Build-n-Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.13
+      id: go
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+    - name: Build
+      run: go build -v .
+    - name: Setup
+      run: |
+        uplink --access=$ACCESS mb sj://test
+        head -c 100 /dev/urandom > test.txt
+        uplink --access=$ACCESS cp test.txt sj://test
+        uplink --access=$ACCESS cp test.txt sj://test/a/e
+        ls -lah
+        mkdir -p mt/1
+        ./test-fs -access=$ACCESS -bucket="test" -mountpoint=mt/1
+    - name: Test
+      run: |
+        ls -lah mt
+        ls -lah mt/1
+        ls -lah mt/1/a
+        ls -lah mt/1/a/e
+        cat mt/1/test.txt
+        cat mt/1/a/e/test.txt
+    - name: Cleanup
+      run: |
+        uplink --access=$acc rm sj://test/a/e/test.txt
+        uplink --access=$acc rm sj://test/test.txt
+        uplink --access=$acc rb sj://test
+

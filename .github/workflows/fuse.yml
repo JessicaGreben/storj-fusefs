@@ -21,13 +21,13 @@ jobs:
       run: go build -v .
     - name: Setup
       run: |
-        uplink --access=${{secret.TEST_ACCESS}} mb sj://test
+        uplink --access=${{ secrets.TEST_ACCESS }} mb sj://test
         head -c 100 /dev/urandom > test.txt
-        uplink --access=${{secret.TEST_ACCESS}} cp test.txt sj://test
-        uplink --access=${{secret.TEST_ACCESS}} cp test.txt sj://test/a/e
+        uplink --access=${{ secrets.TEST_ACCESS }} cp test.txt sj://test
+        uplink --access=${{ secrets.TEST_ACCESS }} cp test.txt sj://test/a/e
         ls -lah
         mkdir -p mt/1
-        ./test-fs -access=${{secret.TEST_ACCESS}} -bucket="test" -mountpoint=mt/1
+        ./test-fs -access=${{ secrets.TEST_ACCESS }} -bucket="test" -mountpoint=mt/1
     - name: Test
       run: |
         ls -lah mt
@@ -38,7 +38,7 @@ jobs:
         cat mt/1/a/e/test.txt
     - name: Cleanup
       run: |
-        uplink --access=${{secret.TEST_ACCESS}} rm sj://test/a/e/test.txt
-        uplink --access=${{secret.TEST_ACCESS}} rm sj://test/test.txt
-        uplink --access=${{secret.TEST_ACCESS}} rb sj://test
+        uplink --access=${{ secrets.TEST_ACCESS }} rm sj://test/a/e/test.txt
+        uplink --access=${{ secrets.TEST_ACCESS }} rm sj://test/test.txt
+        uplink --access=${{ secrets.TEST_ACCESS }} rb sj://test
 
